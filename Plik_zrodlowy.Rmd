@@ -1,0 +1,190 @@
+---
+title: "Drzewo decyzyjne dla wyboru obiadu"
+author: "Jakub Augustynek, Jakub Ignatik, Artur Karamon, JarosÅ‚aw Kmak"
+date: "15 grudnia 2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Wstêp
+
+Istniej¹ decyzje, które podejmowaæ nale¿y codziennie. Do takich decyzji nale¿y równie¿ wybór miejsca, gdzie zjemy dzisiejszy obiad. Ograniczeni jesteœmy takimi czynnikami jak czas, pieni¹dze, czy te¿ dostêpnoœæ sk³adników w lodówce. Nasze drzewko decyzyjne ma za zadanie pomóc przy rozwianiu takich w³aœnie w¹tpliwoœci, bior¹c pod uwagê to, jak bardzo bogaci jesteœmy w zasoby pozwalaj¹ce na spo¿ycie upragnionego posi³ku. Zgodnie z naszym programem, obiad mo¿emy spo¿yæ w trzech g³ównych formach: zrobiony w³asnorêcznie, zjedzony w lokalu oraz zamówiony na dowóz. Pod uwagê bierzemy nastêpuj¹ce czynniki:  
+*Czas przygotowania: *Jakim czasem dysponujemy? Zmienna podzielona jest na 3 kategorie (do 15 minut, od 15 do 30 minut, powy¿ej 30 minut)  
+*Pieni¹dze: *Jaki mamy bud¿et na dzisiejszy obiad? Tutaj równie¿ podzia³ na 3 kategorie (do 10 z³otych, od 10 do 20 z³otych, powy¿ej 20 z³otych)  
+*Dostêpnoœæ sk³adników: *Jak bardzo bogata w sk³adniki jest nasza lodówka? Wystêpuje tu podzia³ na 4 kategorie (brak sk³adników, ma³a dostêpnoœæ, œrednia dostêpnoœæ, du¿a dostêpnoœæ)  
+*Poziom g³odu: *Jak bardzo jesteœmy g³odni? Mo¿liwoœci s¹ dwie: trochê albo bardzo g³odni.  
+*Odleg³oœæ od lokalu: *Ile minut drogi mamy do najbli¿szego punktu z jedzeniem? Podzia³ czasowy na 3 kategorie (do 2 minut, od 2 do 10 minut, wiêcej ni¿ 10 minut)  
+  
+**Metodologia: **W naszym projekcie wykorzystujemy podzia³ na ga³êzie wg entropii. Uda³o nam siê zautomatyzowaæ proces dzielenia siê drzewa, dziêki czemu po zastosowaniu funkcji w odpowiedzi uzyskamy drzewo podzielone poziomowo. Po odpowiedzi na pytanie z danego poziomu nale¿y przejœæ na poziom nastêpny, a¿ do uzyskania jednej z trzech mo¿liwych decyzji. Do pracy do³¹czamy równie¿ graficznie przedstawione drzewo decyzyjne. W za³¹cznikach znajdzie siê te¿ plik z danymi, do których w³asnorêcznie przypisywaliœmy decyzje.  
+
+##Drzewo decyzyjne
+
+Poni¿ej przedstawiony jest kod tworz¹cy drzewo decyzyjne, wraz z wy¿ej wymienionym poziomowaniem w odpowiedzi oraz z komentarzem wyjaœniaj¹cym dzia³aniem kodu.  
+```{r}
+#wczytanie danych
+data <-  read.csv("C:/Users/Jan/Desktop/ESI_bin.csv", sep = ";", header  = FALSE)
+
+#przeksztalcenia ramki z danymi (tak aby nazwy wierszow oznacza³y
+#poszczegolne przeslanki, natomiast kolumn kolejne kombinacje)
+kategorie <- paste0(data[,1],": ", data[,2])
+data <- data[,-c(1,2)]
+colnames(data) <- c(1:ncol(data))
+rownames(data) <- kategorie
+#ustawienie zmiennej oznaczajacej liczbe mozliwosci konkluzji
+#(w przypadku tego drzewa jest to 3)
+ldec <- 3
+ldec2 <- ldec - 1
+
+#funkcja rysujaca drzewo 
+drzewo_decyzyjne<-function(data){
+  
+  #podfunkcja wykonujaca dzielenie tabeli na 2, wg entropii
+  dziel<-function(data){
+    
+    #obliczenie entropii dla konkluzji
+    ISUM <- 0
+    for (i in (nrow(data)-2):(nrow(data))) {
+      I = -(sum(data[i,]==1)/ncol(data))*log2(sum(data[i,]==1)/ncol(data))
+      if((sum(data[i,]==1)/ncol(data)) == 0){
+        I <- 0
+      }
+      ISUM <- ISUM + I
+    }
+    
+    #obliczenie entropii czastokowych dla wszystkich przeslanek i 
+    #zapisanie ich w wektorze entropii (wektor_e)
+    Ic <- 0
+    wektor_e <- c()
+    for(i in 1:(nrow(data)-ldec)){
+      Ic_p_sum <- 0
+      Ic_n_sum <- 0
+      for (j in (nrow(data)-ldec2):nrow(data)){
+        Ic_lp <- sum((data[i,] == data[j,]) & (data[i,] != 0))
+        Ic_mp <- sum(data[i,] == 1)
+        Ic_p <- -(Ic_lp/Ic_mp)*log2(Ic_lp/Ic_mp)
+        Ic_ln <- sum((data[j,]==1) & (data[i,] == 0))
+        Ic_mn <- sum(data[i,] == 0)
+        Ic_n <- -(Ic_ln/Ic_mn)*log2(Ic_ln/Ic_mn)
+        if(Ic_lp == 0){
+          Ic_p <- 0
+        }
+        if(Ic_ln == 0){
+          Ic_n <- 0
+        }
+        Ic_p_sum <- Ic_p_sum + Ic_p
+        Ic_n_sum <- Ic_n_sum + Ic_n
+        
+      }
+      E <- ((Ic_mp/ncol(data))*Ic_p_sum) + ((Ic_mn/ncol(data))*Ic_n_sum)
+      wektor_e[i] <- ISUM-E
+    }
+    
+    #ustalenie wg. ktorej przeslanki nastepuje dzielenie (zapisanie jej nazwy)
+    #i podzial tabeli na dwie (pierwsza, ktora przyjmuje wartosci PRAWDA(1)
+    #oraz druga, ktora przyjmuje wartosci FALSZ(0))
+    podzial <- min(which(wektor_e == max(wektor_e)))
+    data_P <- as.data.frame(data[,which(data[podzial,] == 1)])
+    data_F <- as.data.frame(data[,which(data[podzial,] == 0)])
+    przeslanka_dziel <- rownames(data)[podzial]
+    
+    #stworzenie warunkow pozwalajacych na przypisanie w miejsce jednej z
+    #podzielonych tabel wartosci konkluzji, jesli wszystkie wartosci 
+    #wierszy danej konkluzji wskazuja jej pojawienie sie (maja wart. 1).
+    for (l in 0:ldec2){
+      warunek_p <- (mean(as.numeric(data_P[nrow(data_P)-l,])) == 1) 
+      if (warunek_p==TRUE) {
+        data_P<-rownames(data[nrow(data_P)-l,])
+        break
+      }
+    }
+  
+    for (l in 0:ldec2){
+      warunek_f <- (mean(as.numeric(data_F[nrow(data_F)-l,])) == 1) 
+      if (warunek_f==TRUE) {
+        data_F<-rownames(data[nrow(data_F)-l,])
+        break
+      }
+    }
+    
+    #zwrocenie listy zawierajacej 2 wyniki podzialu tabeli oraz 
+    #przeslanke wg ktorej nastapil podzial
+    return(list(data_P,data_F,przeslanka_dziel))
+  }
+  
+  #przeprowadzenie kolejnych podzialow za pomoca podfunkcji dziel(),
+  #budujac drzewo decyzyjne, oraz ustawienie kilku zmiennych na wartosci startowe
+  war_wyj<-FALSE
+  i_while<-0
+  #przeprowadzenie pierwszego podzialu startowego
+  lista_poziom<-dziel(data)[c(1,2)]
+  wektor_nazw<-c(unlist(dziel(data)[3]))
+  wektor_i_for<-c(1)
+  #przeprowadzanie podzialow utworzonych z poprzednich podzialow tabel 
+  #i wypisywanie wynikow, az do momentu, gdy wszystkie wyniki
+  #na danym poziomie beda konkluzjami
+  while(war_wyj==FALSE){
+    i_while<-i_while+1
+    print(paste0("===== PODZIA£ ",(i_while)," ====="))
+    lista_poziom2<-list()
+    wektor_i_for2<-c()
+    wektor_nazw2<-c()
+    i_if<-0
+    
+    #petla odtwarzajaca wyniki(tabele/konkluzje) uzyskane z poprzedniego podzialu
+    for (i_for in 1:length(lista_poziom)) {
+      #print(i_for)
+      if (i_for%%2==1) {
+        odp <-"Tak"
+        i_if<-i_if+1
+        cat("\n" )
+      }
+      else{ odp <- "Nie"}
+      
+      if (class(lista_poziom[[i_for]])!="character") {
+        lista_poziom_iter<-(dziel(lista_poziom[[i_for]]))[c(1,2)]
+        wektor_nazw2<-c(wektor_nazw2,unlist((dziel(lista_poziom[[i_for]]))[3]))
+        wektor_i_for2<-c(wektor_i_for2,i_for)
+        print(paste0(wektor_i_for[i_if], " --> ",odp," --> ",i_for))
+        print(paste0((wektor_nazw[i_if]), " = ",odp," ----------> ",unlist((dziel(lista_poziom[[i_for]]))[3])))
+      }
+      else{
+        lista_poziom_iter<-list()
+        print(paste0(wektor_i_for[i_if], " --> ",odp," --> ",i_for))
+        print(paste0((wektor_nazw[i_if]), " = ",odp," ----------> ",unlist(lista_poziom[[i_for]])))
+      }
+      
+      lista_poziom2<-c(lista_poziom2,lista_poziom_iter)
+      
+    }
+    wektor_nazw<-wektor_nazw2
+    wektor_i_for<-wektor_i_for2
+    lista_poziom<-lista_poziom2
+    cat("\n" )
+    cat("\n" )
+    cat("\n" )
+
+    #ustawienie warunku wyjscia
+    if(length(lista_poziom)==0){
+      war_wyj<-TRUE
+    }
+  }
+}
+
+#wykorzystanie funkcji na danych
+drzewo_decyzyjne(data)
+```
+
+##Graficzne przedstawienie drzewa
+
+```{r}
+knitr::include_graphics("drzewko.png")
+```
+
+##Podsumowanie
+
+Mo¿na zauwa¿yæ, ¿e drzewo jest doœæ skomplikowane, siêgaj¹c 10 poziomów. Pozwala to jednak na okreœlenie z pe³n¹ skutecznoœci¹, gdzie udaæ siê dzisiejszego dnia na obiad. Zaskoczeniem mo¿e byæ fakt, ¿e drzewo zaczyna siê od okreœlenia odleg³oœci od lokalu, a nie dostêpnoœci czasu czy te¿ pieniêdzy. Tak jednak uzyskana struktura jest jak najbardziej prawid³owa, gdy¿ du¿a odleg³oœæ zniechêca do udania siê do lokalu oraz zachêca do zamówienia czegoœ na dowóz b¹dŸ te¿ przygotowania posi³ku w³asnymi si³ami. Jak ju¿ wspomniane by³o we wstêpie, ca³e drzewo do przeanalizowania graficznie, w czytelniejszej formie, dostêpne jest w za³¹czniku.
